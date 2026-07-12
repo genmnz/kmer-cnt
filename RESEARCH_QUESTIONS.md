@@ -77,6 +77,15 @@ Specifically:
    L1/L2? What `R1`, `R2`, and pass count minimize total traffic for
    `N=3.5×10^8`, `D=5.3×10^7`, the cache sizes above? A worked cost model would
    be ideal.
+   *Tried and rejected (naive form):* a single-threaded microbenchmark of
+   `1024 → ×16` two-level radix (extra pass, then insert into ~64 KB tables)
+   came out **slower** than plain single-level insertion into ~1 MB tables
+   (radix+insert 4.68 s vs insert 3.50 s): the extra read+write pass over all
+   `N` keys cost more than the cache-residency it bought. So the interesting
+   question is whether a *smarter* second pass (write-combining / non-temporal
+   stores, or fusing the second scatter into the first so each key is moved only
+   once) can tip it positive — or whether partitioning is simply the wrong tool
+   and (3) below is the real answer.
 2. For the scatter itself, do **software write-combining buffers** (accumulate
    a cache-line of keys per partition in a small staging area, flush with
    streaming/non-temporal stores `movntdq`) meaningfully beat plain scattered
