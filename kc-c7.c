@@ -388,10 +388,13 @@ static kc_c4x_t *count_file(const char *fn, int k, int p, int64_t block_len, int
 	pthread_mutex_init(&d.mtx, 0);
 	pthread_cond_init(&d.cv, 0);
 
-	// pre-size tables from the (known) uncompressed size estimate
+	// pre-size tables from the (known) uncompressed size estimate. The target
+	// load factor (~0.4) is a measured sweet spot: lower load (bigger tables)
+	// shortens probe chains but costs more allocation/first-touch and L3 pressure
+	// across the workers, which dominates; higher load slows linear probing.
 	h = c4x_init(p);
 	{
-		int64_t per = (int64_t)isize >> (p + 2);
+		int64_t per = (int64_t)isize >> (p + 3);
 		khint_t cap = 256;
 		while (cap < per) cap <<= 1;
 		for (i = 0; i < P; ++i) kc_c4_resize(h->h[i], cap);
