@@ -43,9 +43,22 @@ They were run on a Linux server equipped with two EPYC 7301 CPUs and 512GB RAM.
 |[kc-c2](kc-c2.c)               |<=32-mer; <1024 count|           38.7|        37.9|         1.05|
 |[kc-c3](kc-c3.c)               |<=32-mer; <1024 count|           34.1|        38.7|         1.15|
 |[kc-c4](kc-c4.c) (2+4 threads) |<=32-mer; <1024 count|            7.5|        35.1|         1.27|
+|[kc-c7](kc-c7.c) (see note)    |<=32-mer; <1024 count|             — |         —  |          —  |
 |[yak-count](yak-count.c) (2+4; >=2 count)|<=32-mer; <1024 count| 14.6|        54.8|         0.47|
 |[jellyfish2][jf] (16 threads)  |                    |            10.8|       163.9|         0.82|
 |[KMC3][KMC] (16 thr; in-mem)   |                    |             9.2|        36.2|         5.02|
+
+> **Note on [kc-c7](kc-c7.c).** kc-c7 was developed and benchmarked on a
+> different machine (a 4-core Intel Xeon, no SMT) than the table above, so its
+> absolute numbers are not comparable to the EPYC 7301 rows. Under identical
+> conditions on that 4-core machine (best-of-10, runs interleaved to cancel out
+> shared-host noise), on a 500 Mbp read set with the same characteristics
+> (2.5 M read pairs, 100 bp, ~0.5 % error), **kc-c7 counts 31-mers ~35 % faster
+> than kc-c4** — the fastest of the earlier counters — producing byte-identical
+> histograms. kc-c7 needs [ISA-L][isal] (`libisal-dev`) for igzip. See
+> [RESEARCH_QUESTIONS.md](RESEARCH_QUESTIONS.md) for the profiling that pins the
+> remaining bottleneck (memory-latency-bound aggregation) and the open problems
+> for going further.
 
 ## Discussions
 
@@ -85,6 +98,19 @@ They were run on a Linux server equipped with two EPYC 7301 CPUs and 512GB RAM.
   also uses less CPU time. This is probably because batching helps data
   locality.
 
+* [kc-c7.c](kc-c7.c) is a faster reworking of kc-c4. It keeps kc-c4's ensemble
+  of hash tables and canonical bit-packing but changes the engineering around
+  it: (1) a dedicated producer thread decompresses with SIMD [igzip][isal] and
+  parses reads *concurrently* with counting, instead of a pipeline stage that
+  competes with it; (2) k-mer extraction is multi-threaded (kc-c4 only
+  multi-threads insertion); (3) the hash tables are pre-sized from the known
+  uncompressed length so insertion never re-hashes, and insertion prefetches the
+  hash bucket of a look-ahead k-mer to hide DRAM latency. Together these make it
+  ~35% faster than kc-c4 on the test machine while producing identical output.
+  Profiling then shows the remaining wall is the hash aggregation itself, which
+  is memory-latency bound on the ~1 GB of tables; the paths beyond that point
+  are written up in [RESEARCH_QUESTIONS.md](RESEARCH_QUESTIONS.md).
+
 * [yak-count.c](yak-count.c) is adapted from [yak][yak] and uses the same kc-c4
   algorithm. Similar to [BFCounter][BFCnt], it optionally adds a bloom filter
   to filter out most singleton k-mers (k-mers occurring only once in the
@@ -113,6 +139,7 @@ long way. If you want to implement your own k-mer counter,
 relatively simple. By the way, if you have an efficient and simple k-mer
 counter (implemented in a few files), please let me know. I will be happy to add it to the table.
 
+[isal]: https://github.com/intel/isa-l
 [jf]: http://www.genome.umd.edu/jellyfish.html
 [unordermap]: http://www.cplusplus.com/reference/unordered_map/unordered_map/
 [rhhash]: https://github.com/martinus/robin-hood-hashing

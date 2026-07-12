@@ -2,3 +2,12 @@
 *.dSYM
 *.a
 *.o
+kc-c1
+kc-c2
+kc-c3
+kc-c4
+kc-c7
+kc-cpp1
+kc-cpp2
+yak-count
+*.out

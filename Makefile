@@ -1,7 +1,7 @@
 CFLAGS=-g -Wall -O2
 CXXFLAGS=$(CFLAGS) -std=c++11
 LIBS=-lz
-PROG=kc-c1 kc-c2 kc-c3 kc-c4 kc-cpp1 kc-cpp2 yak-count
+PROG=kc-c1 kc-c2 kc-c3 kc-c4 kc-c7 kc-cpp1 kc-cpp2 yak-count
 
 ifneq ($(asan),)
 	CFLAGS+=-fsanitize=address
@@ -11,6 +11,10 @@ endif
 .PHONY:all clean
 
 all:$(PROG)
+
+# kc-c7 needs ISA-L (igzip) for fast decompression; install e.g. libisal-dev
+kc-c7:kc-c7.c khashl.h ketopt.h kthread.h
+	$(CC) $(CFLAGS) -o $@ kc-c7.c kthread.c $(LIBS) -lpthread -lisal
 
 kc-c1:kc-c1.c khashl.h ketopt.h kseq.h
 	$(CC) $(CFLAGS) -o $@ $< $(LIBS)
