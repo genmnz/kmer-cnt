@@ -203,30 +203,56 @@ Worked (cumulative, in the current build, ~35% faster overall):
 - Pre-size tables from the known `|T|` (no resizes): aggregate 3.0 s → ~2.1 s.
 - Software-prefetch the look-ahead bucket: aggregate → ~1.6 s.
 
-Did **not** help (measured, single-thread microbenchmarks unless noted):
+Also **worked** (from a second review round):
+- **Tune the load factor to ~0.4** (was ~0.2). Counterintuitively, in the *real
+  parallel* run *smaller* tables (higher load, up to ~0.4–0.5) win, even though a
+  single-thread microbench shows the opposite. The parallel cost is dominated by
+  table allocation / first-touch, shared-L3 pressure across workers, and the
+  final histogram scan — all ∝ total table bytes — not by probe-chain length.
+  This alone took the build from ~35% → ~44% faster than baseline; still exact.
+
+Did **not** help (measured):
 - **Custom single-array open-addressing table** (frequency in key, no occupancy
   bitmap): *slower* — the library's compact ~16 MB occupancy bitmap fits L3 and
   answers most probes without touching the 1 GB key array; a single array hits
   DRAM every probe.
 - **More partitions (larger `p`)**: net flat then worse (Q1 table).
 - **Sort-then-run-length** (partition, then LSD-radix-sort each partition, then
-  count runs): **~6× slower** aggregation than hashing (8.3 s vs 1.3 s). The
-  multi-pass sort moves far more bytes than the random hashing that prefetch
-  already hides. Sorting is *not* the answer here.
-- **Write-combining scatter** (stage a full cache line per partition, flush
-  together) to make high-`p` viable: it *does* cut the `p=14` scatter ~35%
-  (8.8 s → 5.7 s single-thread) and the aggregate is cheaper (1.14 → 1.03 s),
-  **but total `p=14`+WCB (6.7 s) still lost to plain `p=10` (4.7 s)**. The
-  scatter to 16 K partitions dominates even when write-combined.
+  count runs): **~6× slower** aggregation than hashing (8.3 s vs 1.3 s
+  single-thread). The multi-pass sort moves far more bytes than the random
+  hashing that prefetch already hides. Sorting is *not* the answer here.
+- **Write-combining scatter**: at high fan-out (`2^14`) it cuts the scatter ~35%
+  but the total still loses to plain `2^10`; at the production `2^10` fan-out it
+  is a **regression** (~3.8 s → ~4.6 s end-to-end) because the ≤2^10 buffer tails
+  already fit L2, so the staging is pure overhead (and is itself a scattered
+  write). WCB only pays when the tail set exceeds cache.
+- **Compact 4-byte slots**: (a) provably impossible to keep *exact* for 5.3×10^7
+  uniform 62-bit keys (birthday bound needs ≥61 preserved bits); and (b) even the
+  *approximate* form does **not** cut the dominant cost — aggregation is bounded
+  by ~3.5×10^8 *random 64-byte cache-line* touches, and a narrower slot does not
+  reduce cache-lines-touched-per-random-probe. It only densifies the singleton
+  first-writes (~46M) from ~368 MB to ~186 MB, negligible against ~22 GB. So Q2's
+  premise (smaller slot → less traffic) does not hold for random-access probing.
+- **Lower load factor to fit L2** (the Q1×Q2 "residency" thesis): refuted — see
+  the load-factor result above; bigger tables are *slower* in parallel.
 - **2 MB pages (`MADV_HUGEPAGE`) for the tables**: ~4% on a 1 GB random-update
   microbenchmark — prefetch already hides the page-walk.
-- **Pipelining produce(i+1) with aggregate(i)** on one work-stealing pool: no
-  gain (Q4).
+- **Pipelining / overlapping produce with aggregate (Q4)**: no gain. Aggregation
+  is *latency*-bound and scales with thread count (2→5 threads: 2.74→1.63 s), so
+  it needs *all* cores; a static core split starves it. Confirmed dead on 4 cores.
+- **Hot/cold heavy-hitter split (Q1.3)**: not implemented — the reuse-distance
+  argument (every "hot" key recurs ~N/58 ≈ 6×10^6 keys apart, ≫ any cache) says a
+  front cache turns over completely between visits. Accepted as a dead end.
+- **Block size**: 32 MB is the measured optimum (smaller adds overhead, larger
+  loses producer/consumer overlap).
 - **Skipping teardown frees before exit**: no measurable gain.
 
-**Net:** on §2's hardware, plain `p=10` prefetched hashing is the best point
-found; every attempt to reach the cache-resident regime cost more in scatter than
-it saved in aggregation. Breaking that specific tension is the crux of Q1.
+**Net:** aggregation is bounded by ~3.5×10^8 *random cache-line* probes; on
+§2's hardware every attempt to reach a genuinely cache-resident regime either
+breaks exactness or costs more in scatter/allocation than it saves. The load
+factor and prefetch depth are the knobs that actually move it. The open crux is
+whether the *count* of random probes can be reduced for exact counting, or the
+random component converted to sequential without a net-losing extra pass.
 
 ## 7. What we're looking for
 
