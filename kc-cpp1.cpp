@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <algorithm>
 #include <cstdlib>
+#include <cstdint>
 #include "ketopt.h"
 
 typedef std::unordered_map<std::string, int> counter_t;

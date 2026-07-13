@@ -3,6 +3,8 @@
 #include <iostream>
 #include <algorithm>
 #include <cstdlib>
+#include <cstdint>
+#include <limits>
 #include "robin_hood.h"
 #include "ketopt.h"
 
