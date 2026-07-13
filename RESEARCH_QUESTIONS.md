@@ -201,7 +201,9 @@ Worked (cumulative, in the current build, ~35% faster overall):
 - Producer thread doing inflate + scan overlapped with counting.
 - Parallelize the produce stage (was single-threaded).
 - Pre-size tables from the known `|T|` (no resizes): aggregate 3.0 s → ~2.1 s.
-- Software-prefetch the look-ahead bucket: aggregate → ~1.6 s.
+- Software-prefetch the look-ahead bucket: aggregate → ~1.6 s. Depth matters:
+  a look-ahead of ~48 (vs 8–12) shaves a further ~0.2 s — aggregation is
+  latency-bound, so more in-flight probes help until the MSHRs saturate (~48–64).
 
 Also **worked** (from a second review round):
 - **Tune the load factor to ~0.4** (was ~0.2). Counterintuitively, in the *real
