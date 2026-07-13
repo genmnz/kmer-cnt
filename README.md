@@ -111,6 +111,21 @@ They were run on a Linux server equipped with two EPYC 7301 CPUs and 512GB RAM.
   is memory-latency bound on the ~1 GB of tables; the paths beyond that point
   are written up in [RESEARCH_QUESTIONS.md](RESEARCH_QUESTIONS.md).
 
+* [kc-lm.c](kc-lm.c) targets the opposite end from kc-c7: **low-end / low-memory
+  devices**. It produces the exact same histogram but runs in a small, *bounded*
+  RAM footprint regardless of input size, trading speed for memory (time does not
+  matter here; not swapping or OOM-ing does). It offloads intermediate k-mers to
+  storage. Two interchangeable strategies, both exact and both only needing zlib:
+  - default **disk-partition** mode — stream the input once, route each k-mer to
+    one of `2^p` temporary partition files, then count one partition at a time;
+  - **`-M` multi-pass** mode — no temp files at all: re-read the input `2^M`
+    times, each pass counting only a hash-slice small enough to fit RAM.
+
+  On the test set kc-lm counts in **~24 MB of RAM** (vs ~2.1 GB for kc-c7) and
+  runs fine under a hard 256 MB cap that kc-c7 cannot; lower `-p`/`-b` (disk) or
+  raise `-M` (multi-pass) to shrink the footprint further. Command line:
+  `kc-lm in.fa.gz` or `kc-lm -M5 in.fa.gz`.
+
 * [yak-count.c](yak-count.c) is adapted from [yak][yak] and uses the same kc-c4
   algorithm. Similar to [BFCounter][BFCnt], it optionally adds a bloom filter
   to filter out most singleton k-mers (k-mers occurring only once in the

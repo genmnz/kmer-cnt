@@ -11,3 +11,5 @@ kc-cpp1
 kc-cpp2
 yak-count
 *.out
+kc-lm
+kclm.*.tmp
