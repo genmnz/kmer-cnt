@@ -147,7 +147,8 @@ static void extract_worker(void *data, long chunk, int tid) // parallel k-mer ex
 	}
 }
 
-#define KC_PREFETCH 12 // how far ahead to prefetch hash buckets
+#define KC_PREFETCH 48 // how far ahead to prefetch hash buckets (aggregation is
+                       // latency-bound; deeper look-ahead keeps more probes in flight)
 
 static void insert_worker(void *data, long prefix, int tid) // parallel insertion, one prefix per call
 {
